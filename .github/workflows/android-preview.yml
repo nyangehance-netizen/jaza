@@ -93,7 +93,17 @@ jobs:
         run: python3 tool/ci_patch_android.py "${{ secrets.MAPS_API_KEY }}"
 
       - name: Check the code
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib > analyze.txt 2>&1
+          code=$?
+          cat analyze.txt
+          if [ $code -ne 0 ]; then
+            # One annotation with every error, so it can be read from the run page and the API.
+            msg=$(grep -E "^\s*error " analyze.txt | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Code errors::${msg}"
+            exit 1
+          fi
 
       - name: Build APK
         run: flutter build apk --release
