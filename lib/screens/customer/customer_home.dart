@@ -10,7 +10,12 @@ import '../../services/db.dart';
 import '../../services/location_service.dart';
 import '../../state/cart.dart';
 import '../../widgets/common.dart';
+import '../../widgets/listing_photo.dart';
+import '../../widgets/pick_location.dart';
+import 'package:latlong2/latlong.dart';
+import '../../services/map_config.dart';
 import '../auth/register_role.dart';
+import 'listing_detail.dart';
 import 'track_screen.dart';
 
 class CustomerHome extends StatefulWidget {
@@ -156,19 +161,31 @@ class _ListingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final n = l.photos.length;
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: InkWell(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ListingDetailScreen(listing: l))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         AspectRatio(
           aspectRatio: 4 / 3,
-          child: l.imageUrl != null
-              ? Image.network(l.imageUrl!, fit: BoxFit.cover)
-              : Container(
-                  color: cs.primaryContainer,
-                  alignment: Alignment.center,
-                  child: Text(l.name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0]).join().toUpperCase(),
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onPrimaryContainer)),
+          child: Stack(fit: StackFit.expand, children: [
+            Hero(tag: 'photo-${l.id}', child: ListingPhoto(src: l.cover, cat: l.cat, name: l.name)),
+            if (n > 1)
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.photo_library_outlined, size: 12, color: Colors.white),
+                    const SizedBox(width: 3),
+                    Text('$n', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ]),
                 ),
+              ),
+          ]),
         ),
         Expanded(
           child: Padding(
@@ -195,6 +212,7 @@ class _ListingCard extends StatelessWidget {
           ),
         ),
       ]),
+      ),
     );
   }
 }
@@ -229,6 +247,19 @@ class _CartPageState extends State<_CartPage> {
       _lng = p.longitude;
     });
     toast(context, 'Location pinned. The rider will see it on the map.');
+  }
+
+  Future<void> _pickOnMap() async {
+    final area = widget.user.customer!['area'] as String? ?? '';
+    final start = _lat != null ? LatLng(_lat!, _lng!) : MapConfig.areaPoint(area);
+    final p = await Navigator.push<LatLng>(context, MaterialPageRoute(
+      builder: (_) => PickLocationScreen(title: 'Where should we deliver?', initial: start),
+    ));
+    if (p == null) return;
+    setState(() {
+      _lat = p.latitude;
+      _lng = p.longitude;
+    });
   }
 
   Future<void> _pickRx() async {
@@ -302,11 +333,33 @@ class _CartPageState extends State<_CartPage> {
         ),
       const SizedBox(height: 12),
       TextField(controller: _addr, decoration: const InputDecoration(labelText: 'Delivery address', hintText: 'Area, street, landmark')),
-      TextButton.icon(
-        onPressed: _useLocation,
-        icon: Icon(_lat == null ? Icons.my_location : Icons.check_circle),
-        label: Text(_lat == null ? 'Pin my exact location' : 'Location pinned'),
-      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _useLocation,
+            icon: const Icon(Icons.my_location),
+            label: const Text("I'm here"),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _pickOnMap,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('Choose on map'),
+          ),
+        ),
+      ]),
+      if (_lat != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            Icon(Icons.check_circle, size: 18, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('Exact spot pinned. The rider will navigate straight to it.')),
+          ]),
+        ),
       if (cart.needsPrescription) ...[
         OutlinedButton.icon(
           onPressed: _pickRx,

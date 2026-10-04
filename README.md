@@ -6,8 +6,8 @@ One Flutter codebase that builds both the Android app (Play Store) and the iOS a
 
 | Part | Where | What it does |
 |---|---|---|
-| Customer app | `lib/screens/customer/` | Browse and search, cart, checkout (M-Pesa, Airtel Money, cash), prescription photo, live order tracking on Google Maps, delivery PIN |
-| Provider app | `lib/screens/provider/` | Register a business, post products/services with photos, accept or decline orders, mark packed, view prescriptions |
+| Customer app | `lib/screens/customer/` | Browse and search, cart, checkout (M-Pesa, Airtel Money, cash), prescription photo, product pages with photo galleries, pin delivery spot on a map, live order tracking on a street map with road route and arrival time, delivery PIN |
+| Provider app | `lib/screens/provider/` | Register a business and pin the shop on the map, post products/services with up to 5 photos each (camera or gallery), edit listings, accept or decline orders, track the rider coming to collect, view prescriptions |
 | Rider app | `lib/screens/rider/` | Go online/offline, see open jobs, accept (first rider wins), GPS sharing during the trip, confirm delivery with PIN, earnings |
 | Login | `lib/screens/auth/` | Phone number + SMS code. One account can be customer, provider and rider |
 | Security rules | `firestore.rules`, `storage.rules` | Who can see and change what. Customers can't see other people's orders, riders only see open jobs and their own trips |
@@ -31,7 +31,8 @@ Each step sends a push notification to the next person.
 Every build from this repo works on its own until you connect Firebase. It runs in **preview mode** (a "PREVIEW" ribbon in the corner):
 - Sample shops in Dar es Salaam, a pharmacy, a kitchen, fundis and a laundry.
 - Sign in with **any Tanzanian number** and the code **123456**. No SMS is sent.
-- Place an order and watch the sample shop accept it and the sample rider, Juma, collect it and ride to you on the map.
+- Place an order and watch the sample shop accept it and the sample rider, Juma, ride along real Dar es Salaam roads to the shop and then to you, on a live street map.
+- Register as a provider and post listings with photos from your camera or gallery. Sample items show category artwork until shops add their own photos.
 - Use a second number to try being a provider or a rider. Register as a rider and switch **Online** to take jobs yourself.
 - Data stays on that phone and resets when the app is closed.
 
@@ -49,7 +50,6 @@ GitHub builds the app for you and gives you an `.apk` file to install.
 4. **Secrets.** In the repo: **Settings → Secrets and variables → Actions → New repository secret**:
    - `FIREBASE_PROJECT_ID`: the project id (Project settings → General)
    - `FIREBASE_SERVICE_ACCOUNT`: paste the entire contents of the `.json` file
-   - `MAPS_API_KEY`: your Google Maps key (setup step 5). Optional for a first look: without it the tracking map is blank.
 5. **Build.** Repo → **Actions** → **Android preview APK** → **Run workflow**. It takes about 10–15 minutes and also deploys the database rules and server functions.
 6. **First run only:** open the finished run and download **letea-android-preview**. Inside:
    - `SAVE-AS-ANDROID_KEYSTORE_BASE64-secret.txt`: save its contents as a new secret named `ANDROID_KEYSTORE_BASE64`, so every future build has the same signature.
@@ -111,8 +111,8 @@ firebase deploy --only firestore,storage,functions
 ```
 For prescriptions: in Google Cloud Console → IAM, give the **App Engine / Compute default service account** the role **Service Account Token Creator**. The pharmacy's private prescription links need it.
 
-### 5. Google Maps key
-In Google Cloud Console (same project) enable **Maps SDK for Android** and **Maps SDK for iOS**, then create an API key and restrict it to your app.
+### 5. Maps (no key needed)
+Maps use **OpenStreetMap** street tiles and road routes from an **OSRM** routing server, so there is no API key or billing to set up. The free public servers are fine for testing and a small launch, but their rules ask busy apps to move to a paid provider. When you grow, change the two URLs in `lib/services/map_config.dart` (tile servers such as MapTiler, Stadia Maps or Thunderforest; routing from a hosted OSRM, GraphHopper or similar). Riders' **Directions** button opens Google Maps (or any maps app) for turn-by-turn navigation.
 
 ---
 
@@ -130,9 +130,14 @@ minSdk = 23
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 ```
-Inside `<application>`:
+Before `</manifest>` (lets riders open directions in a maps app):
 ```xml
-<meta-data android:name="com.google.android.geo.API_KEY" android:value="YOUR_MAPS_KEY"/>
+<queries>
+  <intent>
+    <action android:name="android.intent.action.VIEW"/>
+    <data android:scheme="https"/>
+  </intent>
+</queries>
 ```
 
 **Phone login on Android:** Firebase needs your app's signing fingerprints.
@@ -164,28 +169,6 @@ Open `ios/Runner.xcworkspace` in Xcode.
    <array><dict><key>CFBundleURLSchemes</key><array><string>com.googleusercontent.apps.XXXX</string></array></dict></array>
    ```
 5. **Push notifications:** in the Apple Developer site create an **APNs Auth Key (.p8)**, then upload it in Firebase Console → Project settings → Cloud Messaging → Apple app configuration. Phone login also uses this to skip the reCAPTCHA screen.
-6. **Google Maps:** in `ios/Runner/AppDelegate.swift`:
-   ```swift
-   import GoogleMaps
-   // inside application(_:didFinishLaunchingWithOptions:), before GeneratedPluginRegistrant:
-   GMSServices.provideAPIKey("YOUR_MAPS_KEY")
-   ```
-7. In Terminal: `cd ios && pod install && cd ..`, then `flutter run` with an iPhone connected.
-
----
-
-### 6. Test with real phones
-Use Firebase Console → Authentication → Phone → **Phone numbers for testing** to add fake numbers with fixed codes, so you can test without SMS costs. Then use three phones (or one phone switching roles from the ⇄ menu): customer orders, provider accepts and packs, rider accepts and delivers.
-
-### 7. Turn on mobile money
-Cash on delivery works now. For M-Pesa / Airtel Money:
-1. Sign up with a Tanzanian payment provider. You can go direct to each network or use an aggregator that covers all networks. You will need your business registration (BRELA), TIN and a bank account.
-2. Fill in `functions/payments.js` with their API (the file shows exactly where).
-3. Store keys as secrets and redeploy:
-   ```bash
-   firebase functions:secrets:set PAYMENT_API_KEY
-   firebase functions:secrets:set PAYMENT_WEBHOOK_SECRET
-   ```
    Then make the small edit described in the comment above `startMobilePayment` in `functions/index.js`, and run `firebase deploy --only functions`.
 4. Give the provider your webhook URL (shown after deploy, ends in `/paymentWebhook`).
 

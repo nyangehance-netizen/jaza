@@ -68,34 +68,50 @@ class Db {
       .snapshots()
       .map((s) => s.docs.map(Listing.fromDoc).toList());
 
-  static Future<void> addListing(Map<String, dynamic> data, {File? image}) async {
+  /// Creates a listing, or updates [existingId]. [keep] are photos already
+  /// online that stay; [newPhotos] are files from the camera or gallery.
+  /// The first photo is the cover customers see in the list.
+  static Future<void> saveListing(
+    Map<String, dynamic> data, {
+    String? existingId,
+    List<String> keep = const [],
+    List<File> newPhotos = const [],
+  }) async {
     if (_pv) {
       await _tick();
-      DemoStore.listings.insert(0, Listing(
-        id: DemoStore.newId('listing'), providerId: data['providerId'], providerName: data['providerName'] ?? '',
+      // Preview: photos stay on this phone.
+      final photos = [...keep, ...newPhotos.map((f) => f.path)];
+      final listing = Listing(
+        id: existingId ?? DemoStore.newId('listing'), providerId: data['providerId'], providerName: data['providerName'] ?? '',
         area: data['area'] ?? '', cat: data['cat'], name: data['name'], unit: data['unit'], desc: data['desc'] ?? '',
         type: data['type'], price: data['price'], rx: data['rx'] == true, active: true,
-      ));
+        imageUrl: photos.isEmpty ? null : photos.first, images: photos,
+      );
+      final i = DemoStore.listings.indexWhere((l) => l.id == existingId);
+      i >= 0 ? DemoStore.listings[i] = listing : DemoStore.listings.insert(0, listing);
       DemoStore.notify();
       return;
     }
-    final ref = _fs.collection('listings').doc();
-    String? url;
-    if (image != null) {
-      final up = await _st.ref('listings/${data['providerId']}/${ref.id}.jpg').putFile(image);
-      url = await up.ref.getDownloadURL();
+    final ref = existingId == null ? _fs.collection('listings').doc() : _fs.doc('listings/$existingId');
+    final uploaded = <String>[];
+    for (var i = 0; i < newPhotos.length; i++) {
+      final path = 'listings/${data['providerId']}/${ref.id}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+      final up = await _st.ref(path).putFile(newPhotos[i], SettableMetadata(contentType: 'image/jpeg'));
+      uploaded.add(await up.ref.getDownloadURL());
     }
-    await ref.set({...data, 'imageUrl': url, 'active': true, 'createdAt': FieldValue.serverTimestamp()});
+    final photos = [...keep, ...uploaded];
+    final body = {...data, 'images': photos, 'imageUrl': photos.isEmpty ? null : photos.first};
+    if (existingId == null) {
+      await ref.set({...body, 'active': true, 'createdAt': FieldValue.serverTimestamp()});
+    } else {
+      await ref.update(body);
+    }
   }
 
   static Future<void> setListingActive(String id, bool active) async {
     if (_pv) {
       final i = DemoStore.listings.indexWhere((l) => l.id == id);
-      final l = DemoStore.listings[i];
-      DemoStore.listings[i] = Listing(
-        id: l.id, providerId: l.providerId, providerName: l.providerName, area: l.area, cat: l.cat, name: l.name,
-        unit: l.unit, desc: l.desc, type: l.type, price: l.price, rx: l.rx, active: active, imageUrl: l.imageUrl,
-      );
+      DemoStore.listings[i] = DemoStore.listings[i].copyWith(active: active);
       DemoStore.notify();
       return;
     }

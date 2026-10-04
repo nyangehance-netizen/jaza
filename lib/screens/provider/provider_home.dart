@@ -1,13 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../models/models.dart';
 import '../../services/auth_service.dart';
 import '../../services/db.dart';
 import '../../widgets/common.dart';
+import '../../widgets/listing_photo.dart';
+import 'listing_editor.dart';
 import '../auth/register_role.dart';
+import '../customer/track_screen.dart';
 
 class ProviderHome extends StatefulWidget {
   final AppUser user;
@@ -30,7 +30,7 @@ class _ProviderHomeState extends State<ProviderHome> {
       body: [_OrdersTab(stream: _orders), _ListingsTab(user: widget.user), _Business(user: widget.user)][_tab],
       floatingActionButton: _tab == 1
           ? FloatingActionButton.extended(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddListingScreen(user: widget.user))),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ListingEditorScreen(user: widget.user))),
               icon: const Icon(Icons.add),
               label: const Text('Post listing'),
             )
@@ -113,8 +113,16 @@ class _ProviderOrderCardState extends State<_ProviderOrderCard> {
         );
       case 'ready':
         action = const Text('Waiting for a rider to accept…');
-      case 'assigned':
-        action = Text('${o.riderName ?? 'A rider'} is coming to pick up. ${o.riderPhone ?? ''}');
+      case 'assigned' || 'onway' when !o.isService:
+        action = OutlinedButton.icon(
+          icon: const Icon(Icons.map_outlined),
+          label: Text(o.status == 'assigned'
+              ? 'Track ${o.riderName ?? 'rider'} coming to collect'
+              : 'Track delivery to ${o.customerName}'),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => TrackScreen(orderId: o.id, asCustomer: false),
+          )),
+        );
       case 'onway' when o.isService:
         action = Row(children: [
           Expanded(child: TextField(controller: _pin, keyboardType: TextInputType.number, maxLength: 4, decoration: const InputDecoration(labelText: 'Customer PIN', counterText: ''))),
@@ -170,7 +178,7 @@ class _ListingsTab extends StatelessWidget {
         if (!snap.hasData) return const Loading();
         final list = snap.data!;
         if (list.isEmpty) {
-          return const EmptyState(icon: Icons.add_business_outlined, title: 'Nothing posted yet', body: 'Tap “Post listing” to add a product or service. Customers see it right away.');
+          return const EmptyState(icon: Icons.add_business_outlined, title: 'Nothing posted yet', body: 'Tap “Post listing” to add a product or service with photos. Customers see it right away.');
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
@@ -178,127 +186,47 @@ class _ListingsTab extends StatelessWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (_, i) {
             final l = list[i];
+            void edit() => Navigator.push(context, MaterialPageRoute(builder: (_) => ListingEditorScreen(user: user, existing: l)));
             return Card(
-              child: ListTile(
-                title: Text(l.name),
-                subtitle: Text('${tsh(l.price)} / ${l.unit}${l.active ? '' : ' · Hidden'}'),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) => v == 'toggle'
-                      ? run(context, () => Db.setListingActive(l.id, !l.active), done: l.active ? 'Hidden from customers' : 'Visible to customers')
-                      : run(context, () => Db.deleteListing(l.id), done: 'Listing deleted'),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(value: 'toggle', child: Text(l.active ? 'Hide from customers' : 'Show to customers')),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: edit,
+                child: Row(children: [
+                  SizedBox(width: 92, height: 92, child: ListingPhoto(src: l.cover, cat: l.cat, name: l.name)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(l.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text('${tsh(l.price)} / ${l.unit}'),
+                      Text(
+                        [if (!l.active) 'Hidden', l.photos.isEmpty ? 'No photos yet' : '${l.photos.length} photo${l.photos.length == 1 ? '' : 's'}'].join(' · '),
+                        style: TextStyle(fontSize: 12, color: l.photos.isEmpty ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ]),
+                  ),
+                  PopupMenuButton<String>(
+                    onSelected: (v) {
+                      switch (v) {
+                        case 'edit':
+                          edit();
+                        case 'toggle':
+                          run(context, () => Db.setListingActive(l.id, !l.active), done: l.active ? 'Hidden from customers' : 'Visible to customers');
+                        default:
+                          run(context, () => Db.deleteListing(l.id), done: 'Listing deleted');
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Edit details and photos')),
+                      PopupMenuItem(value: 'toggle', child: Text(l.active ? 'Hide from customers' : 'Show to customers')),
+                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+                ]),
               ),
             );
           },
         );
       },
-    );
-  }
-}
-
-class AddListingScreen extends StatefulWidget {
-  final AppUser user;
-  const AddListingScreen({super.key, required this.user});
-
-  @override
-  State<AddListingScreen> createState() => _AddListingScreenState();
-}
-
-class _AddListingScreenState extends State<AddListingScreen> {
-  final _form = GlobalKey<FormState>();
-  final _name = TextEditingController(), _price = TextEditingController(), _unit = TextEditingController(), _desc = TextEditingController();
-  late String _cat = widget.user.provider!['cat'] ?? 'shopping';
-  String _type = 'product';
-  bool _rx = false, _busy = false;
-  File? _image;
-
-  Future<void> _save() async {
-    if (!_form.currentState!.validate()) return;
-    setState(() => _busy = true);
-    final p = widget.user.provider!;
-    final ok = await run(context, () => Db.addListing({
-          'providerId': widget.user.uid,
-          'providerName': p['name'],
-          'area': p['area'],
-          'cat': _cat,
-          'name': _name.text.trim(),
-          'price': int.parse(_price.text.replaceAll(RegExp(r'\D'), '')),
-          'unit': _unit.text.trim().isEmpty ? (_type == 'service' ? 'visit' : 'item') : _unit.text.trim(),
-          'desc': _desc.text.trim(),
-          'type': _type,
-          'rx': _rx,
-        }, image: _image), done: 'Posted. Customers can see it now.');
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (ok) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Post a product or service')),
-      body: Form(
-        key: _form,
-        child: ListView(padding: const EdgeInsets.all(20), children: [
-          GestureDetector(
-            onTap: () async {
-              final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1200);
-              if (x != null) setState(() => _image = File(x.path));
-            },
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(
-                decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
-                clipBehavior: Clip.antiAlias,
-                child: _image == null
-                    ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add_a_photo_outlined, size: 36), SizedBox(height: 6), Text('Add a photo (optional)')]))
-                    : Image.file(_image!, fit: BoxFit.cover),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextFormField(controller: _name, decoration: const InputDecoration(labelText: 'Name'), validator: (v) => (v ?? '').trim().length < 3 ? 'Give it a name customers will recognise' : null),
-          const SizedBox(height: 14),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'product', label: Text('Product'), icon: Icon(Icons.inventory_2_outlined)),
-              ButtonSegment(value: 'service', label: Text('Service'), icon: Icon(Icons.handyman_outlined)),
-            ],
-            selected: {_type},
-            onSelectionChanged: (s) => setState(() => _type = s.first),
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField(
-            value: _cat,
-            decoration: const InputDecoration(labelText: 'Category'),
-            items: [for (final e in categories.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
-            onChanged: (v) => setState(() => _cat = v!),
-          ),
-          const SizedBox(height: 14),
-          Row(children: [
-            Expanded(
-              child: TextFormField(
-                controller: _price,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Price (TSh)'),
-                validator: (v) => (int.tryParse((v ?? '').replaceAll(RegExp(r'\D'), '')) ?? 0) <= 0 ? 'Enter a price' : null,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: TextFormField(controller: _unit, decoration: const InputDecoration(labelText: 'Per', hintText: 'item, kg, visit'))),
-          ]),
-          const SizedBox(height: 14),
-          TextFormField(controller: _desc, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-          if (_cat == 'pharmacy')
-            SwitchListTile(value: _rx, onChanged: (v) => setState(() => _rx = v), title: const Text('Needs a prescription')),
-          const SizedBox(height: 20),
-          FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Posting…' : 'Post listing')),
-        ]),
-      ),
     );
   }
 }

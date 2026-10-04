@@ -6,8 +6,7 @@ import pathlib
 import re
 import sys
 
-# Without any key entry Google Maps crashes the app, so always add one.
-maps_key = (sys.argv[1] if len(sys.argv) > 1 else "") or "NO_MAPS_KEY_SET"
+maps_key = sys.argv[1] if len(sys.argv) > 1 else ""  # no longer needed: maps use OpenStreetMap
 
 manifest = pathlib.Path("android/app/src/main/AndroidManifest.xml")
 m = manifest.read_text()
@@ -21,6 +20,17 @@ missing = [p for p in perms if p not in m]
 if missing:
     block = "".join(f'    <uses-permission android:name="{p}"/>\n' for p in missing)
     m = m.replace("<application", block + "    <application", 1)
+# Lets the app open Google Maps (or any maps app / browser) for rider directions.
+view_https = """        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+"""
+if 'android:scheme="https"' not in m:
+    if "<queries>" in m:
+        m = m.replace("<queries>", "<queries>\n" + view_https, 1)
+    else:
+        m = m.replace("</manifest>", "    <queries>\n" + view_https + "    </queries>\n</manifest>", 1)
 if maps_key and "com.google.android.geo.API_KEY" not in m:
     m = re.sub(
         r"(<application[^>]*>)",

@@ -4,6 +4,10 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart' show GeoPoint, Timestamp;
 
 import '../models/models.dart';
+import 'package:latlong2/latlong.dart';
+
+import 'map_config.dart';
+import 'route_service.dart';
 
 /// In-memory backend for preview mode. Sample shops in Dar es Salaam, and a
 /// sample rider (Juma) who collects and delivers orders on his own, so one
@@ -20,16 +24,9 @@ class DemoStore {
 
   static const riderJuma = 'demo-rider-juma';
 
-  /// Rough centre points of Dar es Salaam areas, for the tracking map.
-  static const coords = {
-    'Kariakoo': (-6.8190, 39.2740), 'Upanga': (-6.8090, 39.2860), 'Sinza': (-6.7790, 39.2230),
-    'Kinondoni': (-6.7720, 39.2550), 'Mikocheni': (-6.7600, 39.2500), 'Masaki': (-6.7500, 39.2800),
-    'Mbezi Beach': (-6.7200, 39.2150), 'Tegeta': (-6.6680, 39.2080), 'Ubungo': (-6.7900, 39.2050),
-    'Kigamboni': (-6.8500, 39.3100), 'Mbagala': (-6.9000, 39.2700), 'Temeke': (-6.8600, 39.2550),
-  };
   static GeoPoint pointFor(String area) {
-    final c = coords[area] ?? coords['Kariakoo']!;
-    return GeoPoint(c.$1, c.$2);
+    final p = MapConfig.areaPoint(area);
+    return GeoPoint(p.latitude, p.longitude);
   }
 
   static void notify() => _changes.add(null);
@@ -101,7 +98,7 @@ class DemoStore {
       providerPhone: o.providerPhone, pickupArea: o.pickupArea, dropoffAddress: o.dropoffAddress,
       kind: o.kind, status: status ?? o.status, payMethod: o.payMethod, payStatus: payStatus ?? o.payStatus,
       riderId: riderId ?? o.riderId, riderName: riderName ?? o.riderName, riderPhone: riderPhone ?? o.riderPhone,
-      riderPlate: riderPlate ?? o.riderPlate, rxUrl: o.rxUrl, dropoff: o.dropoff, riderLoc: riderLoc ?? o.riderLoc,
+      riderPlate: riderPlate ?? o.riderPlate, rxUrl: o.rxUrl, pickup: o.pickup, dropoff: o.dropoff, riderLoc: riderLoc ?? o.riderLoc,
       items: o.items, subtotal: o.subtotal, fee: o.fee, times: times,
     );
   }
@@ -127,6 +124,7 @@ class DemoStore {
         customerId: uid, customerName: customer['name'] ?? '', customerPhone: me!.phone,
         providerId: e.key, providerName: p['name'] ?? '', providerPhone: users[e.key]?.phone ?? '',
         pickupArea: p['area'] ?? 'Kariakoo', dropoffAddress: address,
+        pickup: p['lat'] is num ? GeoPoint((p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()) : pointFor(p['area'] ?? 'Kariakoo'),
         dropoff: lat != null && lng != null ? GeoPoint(lat, lng) : pointFor(customer['area'] ?? 'Mikocheni'),
         kind: kind, status: 'placed', payMethod: payMethod, payStatus: 'unpaid',
         items: [for (final x in e.value) OrderItem(x.$1.name, x.$1.price, x.$2)],
@@ -199,42 +197,85 @@ class DemoStore {
     if (meRider != null && meRider['online'] == true) return;
     final j = users[riderJuma]!;
     takeJob(id, riderJuma, j.rider!, j.phone);
-    _later(5, () {
-      final o = find(id);
-      if (o?.status != 'assigned') return;
-      replace(copy(o!, status: 'onway', stamp: 'onway'));
-      simulateTrip(id, autoDeliver: true);
-    });
+    runRider(id, auto: true);
   }
 
-  /// Moves the rider from the shop to the customer over about 45 seconds.
-  /// Also used when YOU are the rider in preview, instead of real GPS.
-  static final Map<String, Timer> _trips = {};
-  static void simulateTrip(String id, {bool autoDeliver = false}) {
-    if (_trips.containsKey(id)) return;
+  /// Moves the rider along real roads: first from nearby to the shop, then
+  /// from the shop to the customer. With [auto] the rider also picks up and
+  /// delivers by himself (Juma). Without it (you are the rider) the bike
+  /// waits at the shop until you tap "Picked up", and at the door for the PIN.
+  static final Set<String> _riding = {};
+  static Future<void> runRider(String id, {bool auto = false}) async {
+    if (_riding.contains(id)) return;
     final o = find(id);
     if (o == null) return;
-    final from = pointFor(o.pickupArea), to = o.dropoff ?? pointFor('Mikocheni');
-    replace(copy(o, riderLoc: from));
-    const steps = 45;
-    var i = 0;
-    _trips[id] = Timer.periodic(const Duration(seconds: 1), (t) {
+    _riding.add(id);
+    final shop = o.pickup ?? pointFor(o.pickupArea);
+    final home = o.dropoff ?? pointFor('Mikocheni');
+    final shopLL = LatLng(shop.latitude, shop.longitude), homeLL = LatLng(home.latitude, home.longitude);
+    final startLL = o.riderLoc != null
+        ? LatLng(o.riderLoc!.latitude, o.riderLoc!.longitude)
+        : LatLng(shop.latitude + 0.008, shop.longitude - 0.006); // about 1 km away
+    final toShop = await RouteService.route(startLL, shopLL);
+    final toHome = await RouteService.route(shopLL, homeLL);
+    final approach = _Path(toShop.points), delivery = _Path(toHome.points);
+    var a = 0.0, d = 0.0;
+    var waitedAtShop = 0;
+    Timer.periodic(const Duration(seconds: 1), (t) {
       final cur = find(id);
-      if (cur == null || cur.status != 'onway' || i >= steps) {
+      if (cur == null || !cur.isOpen) {
         t.cancel();
-        _trips.remove(id);
+        _riding.remove(id);
         return;
       }
-      i++;
-      final f = i / steps;
-      final wobble = sin(f * pi * 3) * 0.002; // so the bike doesn't move in a perfectly straight line
-      replace(copy(cur, riderLoc: GeoPoint(from.latitude + (to.latitude - from.latitude) * f + wobble, from.longitude + (to.longitude - from.longitude) * f)));
-      if (i >= steps && autoDeliver) {
-        _later(3, () {
-          final c = find(id);
-          if (c?.status == 'onway') replace(copy(c!, status: 'delivered', stamp: 'delivered', payStatus: c.payMethod == 'cash' ? 'paid' : null));
-        });
+      if (cur.status == 'assigned') {
+        if (a < approach.length) {
+          a = min(approach.length, a + approach.length / 20); // about 20 s to the shop
+          replace(copy(cur, riderLoc: approach.at(a)));
+        } else if (auto && ++waitedAtShop >= 3) {
+          replace(copy(cur, status: 'onway', stamp: 'onway', riderLoc: shop));
+        }
+      } else if (cur.status == 'onway') {
+        if (d < delivery.length) {
+          d = min(delivery.length, d + delivery.length / 40); // about 40 s to the door
+          replace(copy(cur, riderLoc: delivery.at(d)));
+        } else if (auto) {
+          t.cancel();
+          _riding.remove(id);
+          _later(3, () {
+            final c = find(id);
+            if (c?.status == 'onway') replace(copy(c!, status: 'delivered', stamp: 'delivered', payStatus: c.payMethod == 'cash' ? 'paid' : null));
+          });
+        }
       }
     });
+  }
+}
+
+/// A road line you can walk along by distance.
+class _Path {
+  final List<LatLng> pts;
+  final List<double> cum = [0];
+  _Path(this.pts) {
+    const dist = Distance();
+    for (var i = 1; i < pts.length; i++) {
+      cum.add(cum.last + dist(pts[i - 1], pts[i]));
+    }
+  }
+  double get length => cum.last;
+
+  GeoPoint at(double metres) {
+    if (pts.length == 1 || metres <= 0) return GeoPoint(pts.first.latitude, pts.first.longitude);
+    for (var i = 1; i < pts.length; i++) {
+      if (cum[i] >= metres) {
+        final seg = cum[i] - cum[i - 1];
+        final f = seg == 0 ? 0.0 : (metres - cum[i - 1]) / seg;
+        return GeoPoint(
+          pts[i - 1].latitude + (pts[i].latitude - pts[i - 1].latitude) * f,
+          pts[i - 1].longitude + (pts[i].longitude - pts[i - 1].longitude) * f,
+        );
+      }
+    }
+    return GeoPoint(pts.last.latitude, pts.last.longitude);
   }
 }

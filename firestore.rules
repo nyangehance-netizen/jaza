@@ -68,7 +68,8 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.riderId == me()
         && (
              (resource.data.status == 'assigned' && request.resource.data.status == 'onway' && onlyChanges(['status', 'times', 'riderLoc', 'riderLocAt']))
-          || (resource.data.status == 'onway' && request.resource.data.status == 'onway' && onlyChanges(['riderLoc', 'riderLocAt']))
+          // Location updates on the way to the shop and on the way to the customer.
+          || (resource.data.status in ['assigned', 'onway'] && request.resource.data.status == resource.data.status && onlyChanges(['riderLoc', 'riderLocAt']))
         );
       // 'delivered' is only set by the confirmDelivery function after checking the PIN.
 

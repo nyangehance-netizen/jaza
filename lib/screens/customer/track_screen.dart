@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/models.dart';
-import '../../services/app_mode.dart';
 import '../../services/db.dart';
-import '../../widgets/preview_map.dart';
+import '../../widgets/delivery_map.dart';
 import '../../widgets/common.dart';
 
 /// Live order tracking: status timeline, rider on the map, delivery PIN.
 class TrackScreen extends StatefulWidget {
   final String orderId;
-  const TrackScreen({super.key, required this.orderId});
+
+  /// The customer sees the delivery PIN; the shop opening the same screen does not.
+  final bool asCustomer;
+  const TrackScreen({super.key, required this.orderId, this.asCustomer = true});
 
   @override
   State<TrackScreen> createState() => _TrackScreenState();
@@ -19,8 +20,7 @@ class TrackScreen extends StatefulWidget {
 
 class _TrackScreenState extends State<TrackScreen> {
   late final _stream = Db.order(widget.orderId);
-  late final _pin = Db.deliveryPin(widget.orderId);
-  GoogleMapController? _map;
+  late final _pin = widget.asCustomer ? Db.deliveryPin(widget.orderId) : Future<String?>.value(null);
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +46,9 @@ class _TrackScreenState extends State<TrackScreen> {
                       : 'The provider declined this order. Nothing was charged.'),
                 ),
               ),
-            if (!o.isService && o.riderLoc != null && o.isOpen) _mapFor(o),
-            if (o.isOpen && o.status != 'cancelled') _pinCard(o),
+            if (!o.isService && o.isOpen && o.status != 'cancelled')
+              Padding(padding: const EdgeInsets.only(bottom: 12), child: DeliveryMap(order: o, height: 300)),
+            if (widget.asCustomer && o.isOpen && o.status != 'cancelled') _pinCard(o),
             if (o.riderName != null)
               Card(
                 child: ListTile(
@@ -80,40 +81,6 @@ class _TrackScreenState extends State<TrackScreen> {
           ]),
         );
       },
-    );
-  }
-
-  Widget _mapFor(ShopOrder o) {
-    if (AppMode.preview) {
-      return Padding(padding: const EdgeInsets.only(bottom: 12), child: PreviewMap(order: o));
-    }
-    final rider = LatLng(o.riderLoc!.latitude, o.riderLoc!.longitude);
-    final markers = {
-      Marker(markerId: const MarkerId('rider'), position: rider, infoWindow: InfoWindow(title: o.riderName ?? 'Rider')),
-      if (o.dropoff != null)
-        Marker(
-          markerId: const MarkerId('home'),
-          position: LatLng(o.dropoff!.latitude, o.dropoff!.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          infoWindow: const InfoWindow(title: 'You'),
-        ),
-    };
-    _map?.animateCamera(CameraUpdate.newLatLng(rider));
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: SizedBox(
-          height: 240,
-          child: GoogleMap(
-            initialCameraPosition: CameraPosition(target: rider, zoom: 15),
-            markers: markers,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            onMapCreated: (c) => _map = c,
-          ),
-        ),
-      ),
     );
   }
 

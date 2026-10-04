@@ -6,6 +6,7 @@ import '../../services/db.dart';
 import '../../services/location_service.dart';
 import '../../services/push_service.dart';
 import '../../widgets/common.dart';
+import '../../widgets/delivery_map.dart';
 import '../auth/register_role.dart';
 
 class RiderHome extends StatefulWidget {
@@ -111,7 +112,9 @@ class _Jobs extends StatelessWidget {
                         final ok = await Db.takeJob(o.id, user.uid, user.rider!, user.phone);
                         if (!context.mounted) return;
                         if (ok) {
-                          toast(context, 'Job accepted. Head to the shop.');
+                          final err = await LocationService.startSharing(o.id);
+                          if (!context.mounted) return;
+                          toast(context, err ?? 'Job accepted. Head to the shop.');
                           onTaken();
                         } else {
                           toast(context, 'Another rider took this job first.');
@@ -164,8 +167,9 @@ class _TripCardState extends State<_TripCard> {
   @override
   void initState() {
     super.initState();
-    // Resume sharing location if the app was closed mid-trip.
-    if (widget.o.status == 'onway') LocationService.startSharing(widget.o.id);
+    // Share location for the whole job: on the way to the shop and to the customer.
+    // Also resumes if the app was closed mid-trip.
+    LocationService.startSharing(widget.o.id);
   }
 
   Future<void> _start() async {
@@ -195,7 +199,9 @@ class _TripCardState extends State<_TripCard> {
             Expanded(child: Text('${o.customerName}  ·  ${o.code}', style: const TextStyle(fontWeight: FontWeight.w700))),
             StatusChip(o),
           ]),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
+          DeliveryMap(order: o, height: 280, forRider: true),
+          const SizedBox(height: 10),
           LineRow(pickup ? 'Pick up at' : 'Drop at', pickup ? '${o.providerName}, ${o.pickupArea}' : o.dropoffAddress),
           SelectableText(pickup ? 'Shop phone: ${o.providerPhone}' : 'Customer phone: ${o.customerPhone}'),
           if (o.payMethod == 'cash' && !pickup) Text('Collect ${tsh(o.total)} cash'),

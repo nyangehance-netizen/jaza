@@ -32,7 +32,7 @@ class LocationService {
   /// Sends a new position about every 50 metres (not every second) to save data and battery.
   static Future<String?> startSharing(String orderId) async {
     if (AppMode.preview) {
-      DemoStore.simulateTrip(orderId); // preview: the bike moves by itself, you enter the PIN
+      DemoStore.runRider(orderId); // preview: the bike moves along real roads by itself
       return null;
     }
     final err = await ensurePermission();

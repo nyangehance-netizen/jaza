@@ -4,6 +4,9 @@ import '../../models/models.dart';
 import '../../services/db.dart';
 import '../../services/push_service.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pick_location.dart';
+import '../../services/map_config.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Register (or edit) the customer, provider or rider profile for this account.
 class RegisterRoleScreen extends StatefulWidget {
@@ -23,6 +26,21 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
   late String _area = widget.existing?['area'] ?? areas.first;
   late String _cat = widget.existing?['cat'] ?? 'shopping';
   late String _vehicle = widget.existing?['vehicle'] ?? 'Boda';
+  late double? _lat = (widget.existing?['lat'] as num?)?.toDouble();
+  late double? _lng = (widget.existing?['lng'] as num?)?.toDouble();
+
+  Future<void> _pickShop() async {
+    final start = _lat != null ? LatLng(_lat!, _lng!) : MapConfig.areaPoint(_area);
+    final p = await Navigator.push<LatLng>(context, MaterialPageRoute(
+      builder: (_) => PickLocationScreen(title: 'Where is your shop?', initial: start),
+    ));
+    if (p != null) {
+      setState(() {
+        _lat = p.latitude;
+        _lng = p.longitude;
+      });
+    }
+  }
   bool _busy = false;
 
   Future<void> _save() async {
@@ -34,6 +52,7 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
         data['area'] = _area;
       case Role.provider:
         data.addAll({'cat': _cat, 'area': _area, 'verified': widget.existing?['verified'] ?? false});
+        if (_lat != null) data.addAll({'lat': _lat, 'lng': _lng});
       case Role.rider:
         data.addAll({'vehicle': _vehicle, 'plate': _plate.text.trim().toUpperCase(), 'online': widget.existing?['online'] ?? false});
     }
@@ -82,6 +101,15 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
               items: [for (final a in areas) DropdownMenuItem(value: a, child: Text(a))],
               onChanged: (v) => setState(() => _area = v!),
             ),
+          if (r == Role.provider) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _pickShop,
+              icon: Icon(_lat == null ? Icons.add_location_alt_outlined : Icons.check_circle),
+              label: Text(_lat == null ? 'Pin your shop on the map' : 'Shop pinned on the map (change)'),
+            ),
+            const Text('Riders use this pin to find you. Customers see it on their tracking map.'),
+          ],
           if (r == Role.rider) ...[
             DropdownButtonFormField(
               value: _vehicle,

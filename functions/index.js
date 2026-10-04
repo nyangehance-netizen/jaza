@@ -85,6 +85,10 @@ exports.createOrders = onCall(async (req) => {
       providerName: p?.get("provider.name") || lines[0].l.providerName,
       providerPhone: p?.get("phone") || "",
       pickupArea: p?.get("provider.area") || lines[0].l.area,
+      // The shop's pinned spot, so riders and customers see it on the map.
+      pickup: typeof p?.get("provider.lat") === "number" && typeof p?.get("provider.lng") === "number"
+        ? new admin.firestore.GeoPoint(p.get("provider.lat"), p.get("provider.lng"))
+        : null,
       dropoffAddress: address.trim(),
       dropoff: typeof lat === "number" && typeof lng === "number" ? new admin.firestore.GeoPoint(lat, lng) : null,
       kind,

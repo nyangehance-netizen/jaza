@@ -62,14 +62,30 @@ class Listing {
   final bool rx, active;
   final String? imageUrl;
 
+  /// Photos of the product or service. The first one is the cover.
+  final List<String> images;
+
   Listing({
     required this.id, required this.providerId, required this.providerName,
     required this.area, required this.cat, required this.name, required this.unit,
     required this.desc, required this.type, required this.price,
-    required this.rx, required this.active, this.imageUrl,
+    required this.rx, required this.active, this.imageUrl, this.images = const [],
   });
 
   bool get isService => type == 'service';
+
+  /// All photos, including the older single-photo field.
+  List<String> get photos => images.isNotEmpty ? images : [if (imageUrl != null) imageUrl!];
+  String? get cover => photos.isEmpty ? null : photos.first;
+
+  Listing copyWith({String? name, String? cat, String? unit, String? desc, String? type, int? price, bool? rx, bool? active, List<String>? images}) =>
+      Listing(
+        id: id, providerId: providerId, providerName: providerName, area: area,
+        cat: cat ?? this.cat, name: name ?? this.name, unit: unit ?? this.unit, desc: desc ?? this.desc,
+        type: type ?? this.type, price: price ?? this.price, rx: rx ?? this.rx, active: active ?? this.active,
+        imageUrl: images != null ? (images.isEmpty ? null : images.first) : imageUrl,
+        images: images ?? this.images,
+      );
 
   factory Listing.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data()!;
@@ -87,6 +103,7 @@ class Listing {
       rx: m['rx'] == true,
       active: m['active'] != false,
       imageUrl: m['imageUrl'],
+      images: ((m['images'] as List?) ?? const []).whereType<String>().toList(),
     );
   }
 }
@@ -105,7 +122,7 @@ class ShopOrder {
   final String providerId, providerName, providerPhone, pickupArea, dropoffAddress;
   final String kind, status, payMethod, payStatus;
   final String? riderId, riderName, riderPhone, riderPlate, rxUrl;
-  final GeoPoint? dropoff, riderLoc;
+  final GeoPoint? pickup, dropoff, riderLoc;
   final List<OrderItem> items;
   final int subtotal, fee;
   final Map<String, Timestamp> times;
@@ -115,7 +132,7 @@ class ShopOrder {
     required this.customerPhone, required this.providerId, required this.providerName,
     required this.providerPhone, required this.pickupArea, required this.dropoffAddress,
     required this.kind, required this.status, required this.payMethod, required this.payStatus,
-    this.riderId, this.riderName, this.riderPhone, this.riderPlate, this.rxUrl, this.dropoff, this.riderLoc,
+    this.riderId, this.riderName, this.riderPhone, this.riderPlate, this.rxUrl, this.pickup, this.dropoff, this.riderLoc,
     required this.items, required this.subtotal, required this.fee, required this.times,
   });
 
@@ -136,6 +153,7 @@ class ShopOrder {
       providerPhone: m['providerPhone'] ?? '',
       pickupArea: m['pickupArea'] ?? '',
       dropoffAddress: m['dropoffAddress'] ?? '',
+      pickup: m['pickup'],
       dropoff: m['dropoff'],
       kind: m['kind'] ?? 'delivery',
       status: m['status'] ?? 'placed',
