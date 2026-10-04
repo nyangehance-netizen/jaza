@@ -43,7 +43,7 @@ class _RiderHomeState extends State<RiderHome> {
           widget.switcher,
         ],
       ),
-      body: StreamBuilder<List<Order>>(
+      body: StreamBuilder<List<ShopOrder>>(
         stream: _mine,
         builder: (context, mineSnap) {
           final mine = mineSnap.data ?? [];
@@ -68,7 +68,7 @@ class _RiderHomeState extends State<RiderHome> {
 }
 
 class _Jobs extends StatelessWidget {
-  final Stream<List<Order>> stream;
+  final Stream<List<ShopOrder>> stream;
   final AppUser user;
   final bool online;
   final VoidCallback onTaken;
@@ -79,7 +79,7 @@ class _Jobs extends StatelessWidget {
     if (!online) {
       return const EmptyState(icon: Icons.power_settings_new, title: 'You are offline', body: 'Switch to Online at the top to see delivery jobs.');
     }
-    return StreamBuilder<List<Order>>(
+    return StreamBuilder<List<ShopOrder>>(
       stream: stream,
       builder: (context, snap) {
         if (!snap.hasData) return const Loading();
@@ -133,7 +133,7 @@ class _Jobs extends StatelessWidget {
 }
 
 class _Trips extends StatelessWidget {
-  final List<Order> trips;
+  final List<ShopOrder> trips;
   const _Trips({required this.trips});
 
   @override
@@ -151,7 +151,7 @@ class _Trips extends StatelessWidget {
 }
 
 class _TripCard extends StatefulWidget {
-  final Order o;
+  final ShopOrder o;
   const _TripCard(this.o);
 
   @override
@@ -218,7 +218,7 @@ class _TripCardState extends State<_TripCard> {
 
 class _Earnings extends StatelessWidget {
   final AppUser user;
-  final List<Order> done;
+  final List<ShopOrder> done;
   const _Earnings({required this.user, required this.done});
 
   @override

@@ -35,7 +35,7 @@ class _ProviderHomeState extends State<ProviderHome> {
               label: const Text('Post listing'),
             )
           : null,
-      bottomNavigationBar: StreamBuilder<List<Order>>(
+      bottomNavigationBar: StreamBuilder<List<ShopOrder>>(
         stream: _orders,
         builder: (context, snap) {
           final fresh = (snap.data ?? []).where((o) => o.status == 'placed').length;
@@ -58,12 +58,12 @@ class _ProviderHomeState extends State<ProviderHome> {
 }
 
 class _OrdersTab extends StatelessWidget {
-  final Stream<List<Order>> stream;
+  final Stream<List<ShopOrder>> stream;
   const _OrdersTab({required this.stream});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Order>>(
+    return StreamBuilder<List<ShopOrder>>(
       stream: stream,
       builder: (context, snap) {
         if (!snap.hasData) return const Loading();
@@ -83,7 +83,7 @@ class _OrdersTab extends StatelessWidget {
 }
 
 class _ProviderOrderCard extends StatefulWidget {
-  final Order o;
+  final ShopOrder o;
   const _ProviderOrderCard(this.o);
 
   @override

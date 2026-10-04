@@ -82,7 +82,7 @@ class _BrowseState extends State<_Browse> {
           Text('Delivering to ${c['area']}', style: t.bodySmall),
           Text('Habari, ${(c['name'] as String).split(' ').first}', style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          StreamBuilder<List<Order>>(
+          StreamBuilder<List<ShopOrder>>(
             stream: _orders,
             builder: (context, snap) {
               final open = (snap.data ?? []).where((o) => o.isOpen).toList();
@@ -344,7 +344,7 @@ class _Orders extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Order>>(
+    return StreamBuilder<List<ShopOrder>>(
       stream: Db.customerOrders(uid),
       builder: (context, snap) {
         if (!snap.hasData) return const Loading();

@@ -60,35 +60,35 @@ class Db {
   static Future<void> deleteListing(String id) => _fs.doc('listings/$id').delete();
 
   // ---------- Orders ----------
-  static Stream<List<Order>> _orders(Query<Map<String, dynamic>> q) =>
-      q.snapshots().map((s) => s.docs.map(Order.fromDoc).toList());
+  static Stream<List<ShopOrder>> _orders(Query<Map<String, dynamic>> q) =>
+      q.snapshots().map((s) => s.docs.map(ShopOrder.fromDoc).toList());
 
-  static Stream<List<Order>> customerOrders(String uid) => _orders(_fs
+  static Stream<List<ShopOrder>> customerOrders(String uid) => _orders(_fs
       .collection('orders')
       .where('customerId', isEqualTo: uid)
       .orderBy('times.placed', descending: true)
       .limit(50));
 
-  static Stream<List<Order>> providerOrders(String uid) => _orders(_fs
+  static Stream<List<ShopOrder>> providerOrders(String uid) => _orders(_fs
       .collection('orders')
       .where('providerId', isEqualTo: uid)
       .orderBy('times.placed', descending: true)
       .limit(100));
 
-  static Stream<List<Order>> openJobs() => _orders(_fs
+  static Stream<List<ShopOrder>> openJobs() => _orders(_fs
       .collection('orders')
       .where('status', isEqualTo: 'ready')
       .where('riderId', isNull: true)
       .limit(50));
 
-  static Stream<List<Order>> riderOrders(String uid) => _orders(_fs
+  static Stream<List<ShopOrder>> riderOrders(String uid) => _orders(_fs
       .collection('orders')
       .where('riderId', isEqualTo: uid)
       .orderBy('times.placed', descending: true)
       .limit(100));
 
-  static Stream<Order> order(String id) =>
-      _fs.doc('orders/$id').snapshots().map(Order.fromDoc);
+  static Stream<ShopOrder> order(String id) =>
+      _fs.doc('orders/$id').snapshots().map(ShopOrder.fromDoc);
 
   /// The 4-digit PIN lives in a sub-document only the customer can read.
   static Future<String?> deliveryPin(String orderId) async {

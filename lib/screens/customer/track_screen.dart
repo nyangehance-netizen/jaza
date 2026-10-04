@@ -22,7 +22,7 @@ class _TrackScreenState extends State<TrackScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Order>(
+    return StreamBuilder<ShopOrder>(
       stream: _stream,
       builder: (context, snap) {
         if (!snap.hasData) return const Scaffold(body: Loading());
@@ -81,7 +81,7 @@ class _TrackScreenState extends State<TrackScreen> {
     );
   }
 
-  Widget _mapFor(Order o) {
+  Widget _mapFor(ShopOrder o) {
     final rider = LatLng(o.riderLoc!.latitude, o.riderLoc!.longitude);
     final markers = {
       Marker(markerId: const MarkerId('rider'), position: rider, infoWindow: InfoWindow(title: o.riderName ?? 'Rider')),
@@ -112,7 +112,7 @@ class _TrackScreenState extends State<TrackScreen> {
     );
   }
 
-  Widget _pinCard(Order o) => FutureBuilder<String?>(
+  Widget _pinCard(ShopOrder o) => FutureBuilder<String?>(
         future: _pin,
         builder: (context, snap) => Card(
           child: Padding(
@@ -131,7 +131,7 @@ class _TrackScreenState extends State<TrackScreen> {
         ),
       );
 
-  List<Widget> _timeline(BuildContext context, Order o) {
+  List<Widget> _timeline(BuildContext context, ShopOrder o) {
     final steps = stepsFor(o);
     final idx = steps.indexWhere((s) => s.$1 == o.status);
     final cs = Theme.of(context).colorScheme;

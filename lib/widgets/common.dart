@@ -33,7 +33,7 @@ Future<bool> run(BuildContext context, Future<void> Function() action, {String? 
 }
 
 class StatusChip extends StatelessWidget {
-  final Order order;
+  final ShopOrder order;
   const StatusChip(this.order, {super.key});
 
   @override
@@ -101,7 +101,7 @@ class LineRow extends StatelessWidget {
 
 /// Order lines + totals, shared by customer, provider and rider screens.
 class OrderSummary extends StatelessWidget {
-  final Order order;
+  final ShopOrder order;
   const OrderSummary(this.order, {super.key});
 
   @override

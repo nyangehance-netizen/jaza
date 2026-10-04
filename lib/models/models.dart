@@ -100,7 +100,7 @@ class OrderItem {
 }
 
 /// orders/{id}. Created only by the createOrders Cloud Function.
-class Order {
+class ShopOrder {
   final String id, code, customerId, customerName, customerPhone;
   final String providerId, providerName, providerPhone, pickupArea, dropoffAddress;
   final String kind, status, payMethod, payStatus;
@@ -110,7 +110,7 @@ class Order {
   final int subtotal, fee;
   final Map<String, Timestamp> times;
 
-  Order({
+  ShopOrder({
     required this.id, required this.code, required this.customerId, required this.customerName,
     required this.customerPhone, required this.providerId, required this.providerName,
     required this.providerPhone, required this.pickupArea, required this.dropoffAddress,
@@ -123,9 +123,9 @@ class Order {
   bool get isService => kind == 'service';
   bool get isOpen => status != 'delivered' && status != 'cancelled';
 
-  factory Order.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
+  factory ShopOrder.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data()!;
-    return Order(
+    return ShopOrder(
       id: d.id,
       code: m['code'] ?? '',
       customerId: m['customerId'],
@@ -176,9 +176,9 @@ const serviceSteps = [
   ('delivered', 'Job completed'),
 ];
 
-List<(String, String)> stepsFor(Order o) => o.isService ? serviceSteps : deliverySteps;
+List<(String, String)> stepsFor(ShopOrder o) => o.isService ? serviceSteps : deliverySteps;
 
-String statusLabel(Order o) {
+String statusLabel(ShopOrder o) {
   if (o.status == 'cancelled') return 'Declined';
   if (o.status == 'placed') return 'New';
   return stepsFor(o).firstWhere((s) => s.$1 == o.status, orElse: () => ('', o.status)).$2;
