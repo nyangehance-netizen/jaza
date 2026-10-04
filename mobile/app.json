@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Jaza",
+    "slug": "jaza",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "jaza",
+    "ios": {
+      "bundleIdentifier": "tz.co.jaza.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Jaza uses your location so the fuel rider can find your vehicle, and so riders can share their position with clients during a delivery."
+      }
+    },
+    "android": {
+      "package": "tz.co.jaza.app",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    },
+    "plugins": [
+      ["expo-location", { "locationWhenInUsePermission": "Jaza uses your location so the fuel rider can find your vehicle." }],
+      "expo-secure-store",
+      ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Jaza Station Dashboard",
+  "short_name": "Jaza Station",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EEF2F0",
+  "theme_color": "#0E5A50",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
