@@ -27,13 +27,13 @@ Keep this window open. Your phone must be on the **same Wi-Fi** as the computer.
 
 ## Step 2A — Android: get the APK from GitHub (easiest)
 
-This project includes a GitHub Actions workflow (`.github/workflows/android-apk.yml`). Every push to `main` that changes the app builds a fresh APK on GitHub's servers (about 15–25 minutes) and publishes it as the **preview** release.
+This project includes a GitHub Actions workflow (`.github/workflows/android-apk.yml`). Every push to the `jaza-app` branch that changes the app builds a fresh APK on GitHub's servers (about 15–25 minutes) and publishes it as the **jaza-preview** release.
 
-1. On your phone, open `https://github.com/<your-account>/<repo>/releases/tag/preview`.
+1. On your phone, open `https://github.com/nyangehance-netizen/jaza/releases/tag/jaza-preview` (sign in to GitHub on your phone first, since the repository is private).
 2. Tap **jaza-preview.apk** to download, then open it to install (allow "Install unknown apps" if asked).
 3. Open **Jaza** → **Server settings** → enter your server address → **Save and test**.
 
-To rebuild without changing code: repository → **Actions** → **Android APK** → **Run workflow**.
+To rebuild without changing code: repository → **Actions** → **Android APK** → **Run workflow**, and pick the `jaza-app` branch.
 Optional: set a repository variable `API_URL` (Settings → Secrets and variables → Actions → Variables) to bake in a default server address.
 
 ## Step 2A (alternative) — Android APK with Expo's build service

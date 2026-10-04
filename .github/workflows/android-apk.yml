@@ -1,11 +1,11 @@
-# Builds an installable Android APK of the Jaza app on every push to main
-# (or by hand from the Actions tab), then publishes it as the "preview" release.
-# Download it on your phone from: https://github.com/<you>/<repo>/releases/tag/preview
+# Builds an installable Android APK of the Jaza app on every push to the jaza-app branch
+# (or by hand from the Actions tab), then publishes it as the "jaza-preview" release.
+# Download it on your phone from: https://github.com/<you>/<repo>/releases/tag/jaza-preview
 name: Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [jaza-app]
     paths: ['mobile/**', '.github/workflows/android-apk.yml']
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-apk
+  group: jaza-android-apk
   cancel-in-progress: true
 
 jobs:
@@ -70,13 +70,14 @@ jobs:
           name: jaza-preview-apk
           path: out/jaza-preview.apk
 
-      - name: Publish as the "preview" release
+      - name: Publish as the "jaza-preview" release
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete preview --yes --cleanup-tag || true
-          gh release create preview out/jaza-preview.apk \
+          gh release delete jaza-preview --yes --cleanup-tag || true
+          gh release create jaza-preview out/jaza-preview.apk \
+            --target "$GITHUB_SHA" \
             --title "Jaza preview build" \
             --notes "Android preview built from ${GITHUB_SHA::7} on $(date -u '+%Y-%m-%d %H:%M UTC'). Download jaza-preview.apk on your phone and install it. Set the server address in the app under Server settings." \
             --prerelease
