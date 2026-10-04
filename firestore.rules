@@ -1,0 +1,87 @@
+rules_version = '2';
+// Who can read and change what. Deploy with: firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function myUser() { return get(/databases/$(database)/documents/users/$(me())).data; }
+    function isRider() { return signedIn() && myUser().get('rider', null) != null; }
+    function isAdmin() { return signedIn() && request.auth.token.get('admin', false) == true; }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    // ---------- Accounts ----------
+    match /users/{uid} {
+      allow read: if signedIn() && (me() == uid || isAdmin());
+      // People edit their own profile, but cannot mark themselves verified.
+      allow create: if signedIn() && me() == uid
+        && request.resource.data.get('provider', {}).get('verified', false) == false;
+      allow update: if signedIn() && me() == uid
+        && request.resource.data.get('provider', {}).get('verified', false)
+           == resource.data.get('provider', {}).get('verified', false);
+      allow update: if isAdmin();
+    }
+
+    // ---------- Listings ----------
+    match /listings/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.providerId == me()
+        && myUser().get('provider', null) != null
+        && request.resource.data.price is int && request.resource.data.price > 0
+        // Prescription medicine only from pharmacies the Letea team has verified.
+        && (request.resource.data.rx == false || myUser().provider.get('verified', false) == true);
+      allow update: if signedIn() && resource.data.providerId == me()
+        && request.resource.data.providerId == me()
+        && (request.resource.data.rx == false || myUser().provider.get('verified', false) == true);
+      allow delete: if signedIn() && resource.data.providerId == me();
+    }
+
+    // ---------- Orders (created only by the createOrders function) ----------
+    match /orders/{id} {
+      allow read: if signedIn() && (
+           resource.data.customerId == me()
+        || resource.data.providerId == me()
+        || resource.data.riderId == me()
+        || (isRider() && resource.data.status == 'ready' && resource.data.riderId == null)
+        || isAdmin());
+
+      allow create: if false;
+
+      // Provider moves the order through its steps.
+      allow update: if signedIn() && resource.data.providerId == me()
+        && onlyChanges(['status', 'times'])
+        && (
+             (resource.data.status == 'placed'   && request.resource.data.status in ['accepted', 'cancelled'])
+          || (resource.data.status == 'accepted' && resource.data.kind == 'delivery' && request.resource.data.status == 'ready')
+          || (resource.data.status == 'accepted' && resource.data.kind == 'service'  && request.resource.data.status == 'onway')
+        );
+
+      // A rider takes an open job (first one wins inside a transaction).
+      allow update: if isRider()
+        && resource.data.status == 'ready' && resource.data.riderId == null
+        && request.resource.data.riderId == me()
+        && request.resource.data.status == 'assigned'
+        && onlyChanges(['riderId', 'riderName', 'riderPhone', 'riderPlate', 'status', 'times']);
+
+      // The assigned rider starts the trip and shares location.
+      allow update: if signedIn() && resource.data.riderId == me()
+        && (
+             (resource.data.status == 'assigned' && request.resource.data.status == 'onway' && onlyChanges(['status', 'times', 'riderLoc', 'riderLocAt']))
+          || (resource.data.status == 'onway' && request.resource.data.status == 'onway' && onlyChanges(['riderLoc', 'riderLocAt']))
+        );
+      // 'delivered' is only set by the confirmDelivery function after checking the PIN.
+
+      match /private/{doc} {
+        allow read: if signedIn() && get(/databases/$(database)/documents/orders/$(id)).data.customerId == me();
+        allow write: if false;
+      }
+    }
+
+    // Payment records are written only by functions.
+    match /payments/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

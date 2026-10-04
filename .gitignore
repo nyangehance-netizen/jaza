@@ -1,0 +1,12 @@
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+functions/node_modules/
+*.jks
+*.keystore
+key.properties
+service-account*.json
+.idea/
+.vscode/

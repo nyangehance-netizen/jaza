@@ -1,0 +1,185 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+
+final _tsh = NumberFormat.decimalPattern('en_US');
+String tsh(num n) => 'TSh ${_tsh.format(n.round())}';
+
+const areas = [
+  'Kariakoo', 'Mikocheni', 'Masaki', 'Sinza', 'Mbezi Beach', 'Upanga',
+  'Kinondoni', 'Tegeta', 'Ubungo', 'Kigamboni', 'Mbagala', 'Temeke',
+];
+
+const categories = {
+  'shopping': 'Shopping',
+  'pharmacy': 'Pharmacy',
+  'food': 'Food',
+  'services': 'Services',
+  'parcel': 'Parcels',
+};
+
+enum Role { customer, provider, rider }
+
+String roleLabel(Role r) => switch (r) {
+      Role.customer => 'Customer',
+      Role.provider => 'Provider',
+      Role.rider => 'Rider',
+    };
+
+/// users/{uid}. One account can hold any of the three roles.
+class AppUser {
+  final String uid;
+  final String phone;
+  final Map<String, dynamic>? customer; // name, area
+  final Map<String, dynamic>? provider; // name, cat, area, verified
+  final Map<String, dynamic>? rider; // name, vehicle, plate, online
+
+  AppUser({required this.uid, required this.phone, this.customer, this.provider, this.rider});
+
+  factory AppUser.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data() ?? {};
+    return AppUser(
+      uid: d.id,
+      phone: m['phone'] ?? '',
+      customer: m['customer'],
+      provider: m['provider'],
+      rider: m['rider'],
+    );
+  }
+
+  Map<String, dynamic>? profile(Role r) => switch (r) {
+        Role.customer => customer,
+        Role.provider => provider,
+        Role.rider => rider,
+      };
+
+  List<Role> get roles => Role.values.where((r) => profile(r) != null).toList();
+}
+
+/// listings/{id}
+class Listing {
+  final String id, providerId, providerName, area, cat, name, unit, desc, type;
+  final int price;
+  final bool rx, active;
+  final String? imageUrl;
+
+  Listing({
+    required this.id, required this.providerId, required this.providerName,
+    required this.area, required this.cat, required this.name, required this.unit,
+    required this.desc, required this.type, required this.price,
+    required this.rx, required this.active, this.imageUrl,
+  });
+
+  bool get isService => type == 'service';
+
+  factory Listing.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data()!;
+    return Listing(
+      id: d.id,
+      providerId: m['providerId'],
+      providerName: m['providerName'] ?? '',
+      area: m['area'] ?? '',
+      cat: m['cat'] ?? 'shopping',
+      name: m['name'] ?? '',
+      unit: m['unit'] ?? 'item',
+      desc: m['desc'] ?? '',
+      type: m['type'] ?? 'product',
+      price: ((m['price'] ?? 0) as num).toInt(),
+      rx: m['rx'] == true,
+      active: m['active'] != false,
+      imageUrl: m['imageUrl'],
+    );
+  }
+}
+
+class OrderItem {
+  final String name;
+  final int price, qty;
+  OrderItem(this.name, this.price, this.qty);
+  factory OrderItem.fromMap(Map<String, dynamic> m) =>
+      OrderItem(m['name'], (m['price'] as num).toInt(), (m['qty'] as num).toInt());
+}
+
+/// orders/{id}. Created only by the createOrders Cloud Function.
+class Order {
+  final String id, code, customerId, customerName, customerPhone;
+  final String providerId, providerName, providerPhone, pickupArea, dropoffAddress;
+  final String kind, status, payMethod, payStatus;
+  final String? riderId, riderName, riderPhone, riderPlate, rxUrl;
+  final GeoPoint? dropoff, riderLoc;
+  final List<OrderItem> items;
+  final int subtotal, fee;
+  final Map<String, Timestamp> times;
+
+  Order({
+    required this.id, required this.code, required this.customerId, required this.customerName,
+    required this.customerPhone, required this.providerId, required this.providerName,
+    required this.providerPhone, required this.pickupArea, required this.dropoffAddress,
+    required this.kind, required this.status, required this.payMethod, required this.payStatus,
+    this.riderId, this.riderName, this.riderPhone, this.riderPlate, this.rxUrl, this.dropoff, this.riderLoc,
+    required this.items, required this.subtotal, required this.fee, required this.times,
+  });
+
+  int get total => subtotal + fee;
+  bool get isService => kind == 'service';
+  bool get isOpen => status != 'delivered' && status != 'cancelled';
+
+  factory Order.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
+    final m = d.data()!;
+    return Order(
+      id: d.id,
+      code: m['code'] ?? '',
+      customerId: m['customerId'],
+      customerName: m['customerName'] ?? '',
+      customerPhone: m['customerPhone'] ?? '',
+      providerId: m['providerId'],
+      providerName: m['providerName'] ?? '',
+      providerPhone: m['providerPhone'] ?? '',
+      pickupArea: m['pickupArea'] ?? '',
+      dropoffAddress: m['dropoffAddress'] ?? '',
+      dropoff: m['dropoff'],
+      kind: m['kind'] ?? 'delivery',
+      status: m['status'] ?? 'placed',
+      payMethod: m['payMethod'] ?? 'cash',
+      payStatus: m['payStatus'] ?? 'unpaid',
+      riderId: m['riderId'],
+      riderName: m['riderName'],
+      riderPhone: m['riderPhone'],
+      riderPlate: m['riderPlate'],
+      riderLoc: m['riderLoc'],
+      rxUrl: m['rxUrl'],
+      items: ((m['items'] ?? []) as List)
+          .map((e) => OrderItem.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
+      subtotal: ((m['subtotal'] ?? 0) as num).toInt(),
+      fee: ((m['fee'] ?? 0) as num).toInt(),
+      times: {
+        for (final e in Map<String, dynamic>.from(m['times'] ?? {}).entries)
+          if (e.value is Timestamp) e.key: e.value as Timestamp, // pending server times are skipped
+      },
+    );
+  }
+}
+
+const deliverySteps = [
+  ('placed', 'Order placed'),
+  ('accepted', 'Shop confirmed'),
+  ('ready', 'Packed, waiting for rider'),
+  ('assigned', 'Rider assigned'),
+  ('onway', 'On the way'),
+  ('delivered', 'Delivered'),
+];
+
+const serviceSteps = [
+  ('placed', 'Booking sent'),
+  ('accepted', 'Provider confirmed'),
+  ('onway', 'Provider on the way'),
+  ('delivered', 'Job completed'),
+];
+
+List<(String, String)> stepsFor(Order o) => o.isService ? serviceSteps : deliverySteps;
+
+String statusLabel(Order o) {
+  if (o.status == 'cancelled') return 'Declined';
+  if (o.status == 'placed') return 'New';
+  return stepsFor(o).firstWhere((s) => s.$1 == o.status, orElse: () => ('', o.status)).$2;
+}

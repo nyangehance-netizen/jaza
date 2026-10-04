@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Product photos: public to signed-in users, written by the provider who owns them.
+    match /listings/{providerId}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == providerId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    // Prescriptions: private. Only the customer uploads; the pharmacy gets a
+    // short-lived link from the createOrders function.
+    match /prescriptions/{uid}/{file} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024;
+    }
+  }
+}
