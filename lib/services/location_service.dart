@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
 
+import 'app_mode.dart';
 import 'db.dart';
+import 'demo_store.dart';
 
 /// Shares the rider's GPS position on an active trip so the customer can
 /// watch the rider move on the map.
@@ -29,6 +31,10 @@ class LocationService {
 
   /// Sends a new position about every 50 metres (not every second) to save data and battery.
   static Future<String?> startSharing(String orderId) async {
+    if (AppMode.preview) {
+      DemoStore.simulateTrip(orderId); // preview: the bike moves by itself, you enter the PIN
+      return null;
+    }
     final err = await ensurePermission();
     if (err != null) return err;
     if (_orderId == orderId) return null;

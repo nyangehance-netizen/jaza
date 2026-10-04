@@ -75,7 +75,7 @@ jobs:
         run: |
           if grep -q "PLACEHOLDER" lib/firebase_options.dart; then
             if [ -z "$PROJECT_ID" ] || [ -z "$SA_JSON" ]; then
-              echo "::warning::Firebase secrets not added yet. Building a code check only: this APK cannot sign in until you add them (README: Install a preview)."
+              echo "::warning::Firebase secrets not added yet. Building in PREVIEW MODE: the app runs with sample data on the phone. Add the secrets to connect your real database (README: Install a preview)."
               exit 0
             fi
             printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"

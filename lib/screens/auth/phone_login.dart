@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/app_mode.dart';
 import '../../services/auth_service.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
@@ -75,6 +76,19 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           Text(sent ? 'We sent a 6-digit code to ${AuthService.normalize(_phone.text)}.' : 'Sign in with your phone number. We will send you a code by SMS.'),
+          if (AppMode.preview) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Preview mode: sample shops and orders on this phone only. No SMS is sent. '
+                  'Use any Tanzanian number and the code ${AuthService.previewCode}. '
+                  'Sign in with different numbers to try customer, provider and rider.',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           if (!sent)
             TextField(

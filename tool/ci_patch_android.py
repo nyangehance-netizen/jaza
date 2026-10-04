@@ -6,7 +6,8 @@ import pathlib
 import re
 import sys
 
-maps_key = sys.argv[1] if len(sys.argv) > 1 else ""
+# Without any key entry Google Maps crashes the app, so always add one.
+maps_key = (sys.argv[1] if len(sys.argv) > 1 else "") or "NO_MAPS_KEY_SET"
 
 manifest = pathlib.Path("android/app/src/main/AndroidManifest.xml")
 m = manifest.read_text()

@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -18,13 +17,13 @@ class Gate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
+    return StreamBuilder<Session?>(
       stream: AuthService.changes,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Loading());
         final u = snap.data;
         if (u == null) return const PhoneLoginScreen();
-        return RoleShell(uid: u.uid, phone: u.phoneNumber ?? '');
+        return RoleShell(key: ValueKey(u.uid), uid: u.uid, phone: u.phone);
       },
     );
   }

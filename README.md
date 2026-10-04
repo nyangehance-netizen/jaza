@@ -27,6 +27,18 @@ Each step sends a push notification to the next person.
 
 ## Install a preview on your phone
 
+### Fastest: preview mode (no setup)
+Every build from this repo works on its own until you connect Firebase. It runs in **preview mode** (a "PREVIEW" ribbon in the corner):
+- Sample shops in Dar es Salaam, a pharmacy, a kitchen, fundis and a laundry.
+- Sign in with **any Tanzanian number** and the code **123456**. No SMS is sent.
+- Place an order and watch the sample shop accept it and the sample rider, Juma, collect it and ride to you on the map.
+- Use a second number to try being a provider or a rider. Register as a rider and switch **Online** to take jobs yourself.
+- Data stays on that phone and resets when the app is closed.
+
+Download: repo → **Actions** → latest **Android preview APK** run → **Artifacts → letea-android-preview** → unzip → install `letea-preview.apk` (allow **Install unknown apps**).
+
+### Connected to your real database
+
 ### Android: build the APK on GitHub (no Flutter needed on your computer)
 GitHub builds the app for you and gives you an `.apk` file to install.
 

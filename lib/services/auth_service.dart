@@ -1,11 +1,34 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Phone-number login with an SMS code (works on Android and iOS).
-class AuthService {
-  static final _auth = FirebaseAuth.instance;
+import 'app_mode.dart';
+import 'demo_store.dart';
 
-  static Stream<User?> get changes => _auth.authStateChanges();
-  static User? get current => _auth.currentUser;
+/// Who is signed in.
+class Session {
+  final String uid, phone;
+  const Session(this.uid, this.phone);
+}
+
+/// Phone-number login with an SMS code (works on Android and iOS).
+/// In preview mode any number works with the code 123456.
+class AuthService {
+  static FirebaseAuth get _auth => FirebaseAuth.instance;
+  static const previewCode = '123456';
+  static Session? _preview;
+  static final _previewChanges = StreamController<void>.broadcast();
+
+  static Stream<Session?> get changes {
+    if (AppMode.preview) {
+      return Stream<Session?>.multi((c) {
+        c.add(_preview);
+        final sub = _previewChanges.stream.listen((_) => c.add(_preview));
+        c.onCancel = sub.cancel;
+      });
+    }
+    return _auth.authStateChanges().map((u) => u == null ? null : Session(u.uid, u.phoneNumber ?? ''));
+  }
 
   /// Turns "0712 345 678" into "+255712345678".
   static String normalize(String input) {
@@ -24,7 +47,12 @@ class AuthService {
     required void Function(String verificationId) onCode,
     required void Function(String message) onError,
     required void Function() onAutoSignIn,
-  }) {
+  }) async {
+    if (AppMode.preview) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      onCode(normalize(phone));
+      return;
+    }
     return _auth.verifyPhoneNumber(
       phoneNumber: normalize(phone),
       timeout: const Duration(seconds: 60),
@@ -40,11 +68,27 @@ class AuthService {
   }
 
   static Future<void> confirm(String verificationId, String smsCode) async {
+    if (AppMode.preview) {
+      if (smsCode != previewCode) throw StateError('wrong code');
+      final phone = verificationId; // in preview the "verification id" is the phone number
+      _preview = Session('preview-${phone.replaceAll('+', '')}', phone);
+      DemoStore.currentUid = _preview!.uid;
+      _previewChanges.add(null);
+      return;
+    }
     final cred = PhoneAuthProvider.credential(verificationId: verificationId, smsCode: smsCode);
     await _auth.signInWithCredential(cred);
   }
 
-  static Future<void> signOut() => _auth.signOut();
+  static Future<void> signOut() async {
+    if (AppMode.preview) {
+      _preview = null;
+      DemoStore.currentUid = null;
+      _previewChanges.add(null);
+      return;
+    }
+    await _auth.signOut();
+  }
 
   static String _message(FirebaseAuthException e) => switch (e.code) {
         'invalid-phone-number' => 'That phone number is not valid. Use the format 0712 345 678.',

@@ -3,7 +3,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/models.dart';
+import '../../services/app_mode.dart';
 import '../../services/db.dart';
+import '../../widgets/preview_map.dart';
 import '../../widgets/common.dart';
 
 /// Live order tracking: status timeline, rider on the map, delivery PIN.
@@ -82,6 +84,9 @@ class _TrackScreenState extends State<TrackScreen> {
   }
 
   Widget _mapFor(ShopOrder o) {
+    if (AppMode.preview) {
+      return Padding(padding: const EdgeInsets.only(bottom: 12), child: PreviewMap(order: o));
+    }
     final rider = LatLng(o.riderLoc!.latitude, o.riderLoc!.longitude);
     final markers = {
       Marker(markerId: const MarkerId('rider'), position: rider, infoWindow: InfoWindow(title: o.riderName ?? 'Rider')),

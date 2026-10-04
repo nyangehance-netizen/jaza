@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'app_mode.dart';
+
 /// Push notifications: new order for the shop, new job for riders,
 /// status changes for the customer. Sent by the Cloud Functions.
 class PushService {
@@ -14,6 +16,7 @@ class PushService {
   /// Call after sign-in. Asks permission (iOS shows a dialog) and stores this
   /// phone's token so the server knows where to send notifications.
   static Future<void> registerDevice(String uid) async {
+    if (AppMode.preview) return;
     try {
       final m = FirebaseMessaging.instance;
       final perm = await m.requestPermission();
@@ -28,6 +31,7 @@ class PushService {
   }
 
   static Future<void> subscribeRiderJobs(bool on) async {
+    if (AppMode.preview) return;
     try {
       on
           ? await FirebaseMessaging.instance.subscribeToTopic('rider-jobs')
