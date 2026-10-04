@@ -42,6 +42,8 @@ jobs:
   apk:
     name: Build Android preview APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -112,6 +114,7 @@ jobs:
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
           set -e
           PASS="${KS_PASS:-letea-preview}"
@@ -122,8 +125,12 @@ jobs:
             keytool -genkeypair -v -keystore "$RUNNER_TEMP/letea.jks" -alias letea \
               -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
               -dname "CN=Letea Preview, O=Letea, C=TZ"
-            base64 -w0 "$RUNNER_TEMP/letea.jks" > out/SAVE-AS-ANDROID_KEYSTORE_BASE64-secret.txt
-            echo "::warning::New signing key created. Save it as the ANDROID_KEYSTORE_BASE64 secret (file in the download) so future builds keep the same fingerprints."
+            if [ "$REPO_PRIVATE" = "true" ]; then
+              base64 -w0 "$RUNNER_TEMP/letea.jks" > out/SAVE-AS-ANDROID_KEYSTORE_BASE64-secret.txt
+              echo "::warning::New signing key created. Save it as the ANDROID_KEYSTORE_BASE64 secret (file in the download) so future builds keep the same fingerprints."
+            else
+              echo "::warning::This repository is public, so the signing key is not saved in the download. Make the repo private to get a permanent key (needed for phone login once Firebase is connected)."
+            fi
           fi
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" sign --ks "$RUNNER_TEMP/letea.jks" --ks-pass "pass:$PASS" --ks-key-alias letea \
@@ -137,3 +144,13 @@ jobs:
           name: letea-android-preview
           path: out/
           retention-days: 30
+
+      - name: Put the APK on the Releases page (one tap to download on a phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete preview --yes --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create preview out/letea-preview.apk -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Letea preview (Android)" \
+            --notes "Built from ${GITHUB_SHA::7}. On your Android phone: tap letea-preview.apk below, then Install (allow Install unknown apps). Without Firebase connected it runs in preview mode: any number, code 123456."
