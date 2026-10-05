@@ -58,13 +58,36 @@ GitHub builds the app for you and gives you an `.apk` file to install.
 7. **Install.** Download the new `letea-preview.apk` on your Android phone (or send it via WhatsApp/Drive), tap it, and allow **Install unknown apps** when asked. Share the same file with your test shops and riders.
 8. **Testing without SMS costs:** Firebase → Authentication → Phone → **Phone numbers for testing**, e.g. `+255700000001` with code `123456`.
 
-### iPhone: TestFlight
-Apple does not allow installing apps from a file. iPhone testers install through Apple's **TestFlight** app:
-1. Join the Apple Developer Program ($99/year).
-2. On a Mac, complete the iOS setup below, then run `flutter build ipa` and upload with Xcode → Organizer.
-3. In App Store Connect → TestFlight, add testers by email. They install the **TestFlight** app and then Letea.
+### iPhone (no Mac needed)
+GitHub builds the iPhone app on its Mac computers (workflow **iOS build**, about 30–45 minutes). Every build:
+- checks that the app opens and tracks a delivery on a virtual iPhone, and saves screenshots to the **ios-screenshots** branch;
+- puts **letea-ios-unsigned.ipa** on the **ios-preview** release:
+  https://github.com/nyangehance-netizen/jaza/releases/tag/ios-preview
 
-No Mac? Cloud build services that support Flutter (for example Codemagic) can build and send the app to TestFlight from your GitHub repo. You still need the Apple Developer account.
+Apple doesn't let iPhones install an app straight from a file. There are two ways to get it on a phone:
+
+**A. Your own iPhone, free (needs a Windows PC or Mac for 10 minutes)**
+1. On the computer, install **iTunes** (Windows, from apple.com, not the Microsoft Store) and **Sideloadly** (sideloadly.io).
+2. Download `letea-ios-unsigned.ipa` from the ios-preview release above.
+3. Connect the iPhone with a cable and tap **Trust** on the phone.
+4. Open Sideloadly, drag in the IPA, enter your Apple ID and press **Start**. Sideloadly signs the app with your Apple ID.
+5. On the iPhone:
+   - **Settings → General → VPN & Device Management** → tap your Apple ID → **Trust**.
+   - On iOS 16 or newer, also turn on **Settings → Privacy & Security → Developer Mode** and restart when asked.
+6. Open Letea. With a free Apple ID the app stops opening after **7 days**: run Sideloadly again to renew it. Good for your own testing, not for customers.
+
+**B. TestFlight, for testers and real users ($99/year Apple Developer Program)**
+1. Join the Apple Developer Program at developer.apple.com.
+2. In **App Store Connect → Apps → +**, create the app: name *Letea*, bundle ID **com.letea.letea**. If that ID is taken, pick another and change `BUNDLE_ID` in `.github/workflows/ios.yml` and `--org` in both workflows.
+3. In **App Store Connect → Users and Access → Integrations → App Store Connect API**, create a key with **Admin** access and download the `.p8` file. It can only be downloaded once.
+4. Add four GitHub secrets:
+   - `APPLE_TEAM_ID`: from developer.apple.com → Account → Membership.
+   - `ASC_KEY_ID` and `ASC_ISSUER_ID`: both shown on the API keys page.
+   - `ASC_KEY_P8`: open the `.p8` file in Notepad and paste all of it.
+5. Run **iOS build** again. It signs the app and uploads it to TestFlight by itself.
+6. In **App Store Connect → TestFlight**, add testers by email. They install Apple's **TestFlight** app, then Letea. Builds last 90 days, and each new build updates their app.
+
+**Phone login and notifications on iPhone** (only once Firebase is connected): upload an **APNs key** (developer.apple.com → Keys → +, tick *Apple Push Notifications service*) to Firebase Console → Project settings → Cloud Messaging → Apple app. The build adds the login URL scheme and push settings automatically.
 
 ### Both, right now: the web preview
 Until the apps are built, open the **Letea Live** link on any phone and use the browser's **Add to Home screen**. It opens like an app and uses the same order flow.
@@ -73,7 +96,7 @@ Until the apps are built, open the **Letea Live** link on any phone and use the 
 
 ## Setup (about 1–2 hours the first time)
 
-You need a computer. iOS builds need a **Mac with Xcode**; Android works on Windows, Mac or Linux.
+You only need this section to build on your own computer. GitHub builds both apps for you without it. Building iOS yourself needs a **Mac with Xcode**; Android works on Windows, Mac or Linux.
 
 ### 1. Install the tools
 - Flutter SDK: https://docs.flutter.dev/get-started/install (then run `flutter doctor` and fix what it lists)
@@ -148,7 +171,7 @@ Copy the **SHA-1** and **SHA-256** into Firebase Console → Project settings �
 
 Run it: plug in a phone with USB debugging on, then `flutter run`.
 
-## iOS setup (on a Mac)
+## iOS setup on your own Mac (optional: GitHub does all of this for you)
 
 Open `ios/Runner.xcworkspace` in Xcode.
 

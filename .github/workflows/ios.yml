@@ -1,0 +1,182 @@
+# Builds the iPhone (iOS) version of Letea on GitHub's Mac computers.
+# Run it from the repo's "Actions" tab → "iOS build" → "Run workflow". It also
+# runs by itself when the app code changes on main.
+#
+# What you get every time:
+#   1. letea-ios-unsigned.ipa on the "ios-preview" release. Install it on your own
+#      iPhone with Sideloadly and a free Apple ID (README: "iPhone").
+#   2. A check that the app opens on a virtual iPhone, with screenshots saved to
+#      the "ios-screenshots" branch.
+#
+# With these secrets it ALSO uploads a signed build to TestFlight (README: "TestFlight"):
+#   APPLE_TEAM_ID        10-character Team ID from developer.apple.com → Membership
+#   ASC_KEY_ID           App Store Connect API key ID
+#   ASC_ISSUER_ID        App Store Connect API issuer ID
+#   ASC_KEY_P8           full text of the downloaded AuthKey_XXXX.p8 file
+# Firebase secrets (same as Android) connect the build to your real database.
+name: iOS build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - "tool/ci_patch_ios.py"
+      - ".github/workflows/ios.yml"
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Build iPhone app
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      contents: write
+    env:
+      BUNDLE_ID: com.letea.letea
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create iOS project files
+        run: |
+          if [ ! -d ios ]; then
+            flutter create . --org com.letea --project-name letea --platforms ios
+            rm -f test/widget_test.dart
+          fi
+          flutter pub get
+
+      - name: Connect the app to Firebase
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          if grep -q "PLACEHOLDER" lib/firebase_options.dart; then
+            if [ -z "$PROJECT_ID" ] || [ -z "$SA_JSON" ]; then
+              echo "::warning::Firebase secrets not added yet. Building in PREVIEW MODE (sample data on the phone)."
+              exit 0
+            fi
+            printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+            npm install -g firebase-tools
+            gem list -i xcodeproj >/dev/null || sudo gem install xcodeproj
+            dart pub global activate flutterfire_cli
+            export PATH="$PATH:$HOME/.pub-cache/bin"
+            flutterfire configure --project="$PROJECT_ID" --platforms=ios --ios-bundle-id="$BUNDLE_ID" --yes
+          fi
+
+      - name: Add permissions, minimum iOS version and login settings
+        run: python3 tool/ci_patch_ios.py
+
+      - name: Build the iPhone app (unsigned)
+        run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
+
+      - name: Package letea-ios-unsigned.ipa
+        run: |
+          mkdir -p out/Payload
+          cp -R build/ios/iphoneos/Runner.app out/Payload/
+          (cd out && zip -qry letea-ios-unsigned.ipa Payload && rm -rf Payload)
+          ls -lh out
+
+      - name: Sign and upload to TestFlight
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          if [ -z "$TEAM" ] || [ -z "$KEY_ID" ] || [ -z "$ISSUER" ] || [ -z "$KEY_P8" ]; then
+            echo "::notice::Apple secrets not added, so no TestFlight upload. Use the unsigned IPA with Sideloadly, or add the secrets (README: TestFlight)."
+            exit 0
+          fi
+          set -e
+          KEY="$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+          printf '%s' "$KEY_P8" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Letea.xcarchive" archive \
+            "${AUTH[@]}" DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic | tail -40
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Letea.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
+          echo "::notice title=TestFlight::Build ${{ github.run_number }} uploaded. It appears in App Store Connect → TestFlight after Apple finishes processing (usually 5–30 minutes)."
+
+      - name: Open the app on a virtual iPhone and take screenshots
+        run: |
+          set +e
+          flutter build ios --simulator --debug || { echo "::error title=Virtual iPhone build failed::See the log of this step."; exit 1; }
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          phones=[x for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if x['name'].startswith('iPhone')]
+          print(phones[0]['udid'])")
+          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/ios/iphonesimulator/Runner.app
+          mkdir -p shots
+          snap() { xcrun simctl io "$UDID" screenshot "shots/$1.png" >/dev/null 2>&1; }
+          alive() { xcrun simctl spawn "$UDID" launchctl list | grep -q "UIKitApplication:$BUNDLE_ID\[" && \
+                    ! xcrun simctl spawn "$UDID" launchctl list | grep "UIKitApplication:$BUNDLE_ID\[" | grep -q "^-"; }
+          fail() {
+            echo "::error title=App closed on iPhone::$1"
+            tail -60 "$RUNNER_TEMP"/app*.log 2>/dev/null
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i runner && \
+              head -80 ~/Library/Logs/DiagnosticReports/*Runner* 2>/dev/null
+            exit 1
+          }
+
+          # 1) Normal start: the sign-in screen.
+          xcrun simctl launch --stdout="$RUNNER_TEMP/app1.log" --stderr="$RUNNER_TEMP/app1.log" "$UDID" "$BUNDLE_ID"
+          sleep 25; snap 1-sign-in
+          alive || fail "The app closed right after opening."
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID"
+
+          # 2) A delivery in progress: shop accepts, rider rides to the shop, then to the customer.
+          SIMCTL_CHILD_LETEA_DEMO=track xcrun simctl launch --stdout="$RUNNER_TEMP/app2.log" --stderr="$RUNNER_TEMP/app2.log" "$UDID" "$BUNDLE_ID"
+          sleep 20; snap 2-order-placed
+          sleep 25; snap 3-rider-to-shop
+          sleep 30; snap 4-rider-to-customer
+          alive || fail "The app closed while tracking a delivery."
+          echo "::notice title=iPhone check::The app opened and tracked a delivery on a virtual iPhone without closing."
+
+      - name: Save screenshots to the ios-screenshots branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -d shots ] && ls shots/*.png >/dev/null 2>&1 || exit 0
+          cd shots
+          git init -q && git checkout -q -b ios-screenshots
+          printf '# iPhone screenshots\n\nFrom build %s (%s).\n' "${{ github.run_number }}" "${GITHUB_SHA::7}" > README.md
+          git add . && git -c user.name="Letea CI" -c user.email="ci@users.noreply.github.com" commit -qm "iOS screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ios-screenshots
+
+      - name: Put the iPhone app on the ios-preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-preview --yes --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create ios-preview out/letea-ios-unsigned.ipa -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --latest=false --prerelease \
+            --title "Letea preview (iPhone)" \
+            --notes "Built from ${GITHUB_SHA::7}. iPhones can't install apps from a file directly. Install with Sideloadly and your Apple ID (steps in the README, section iPhone), or use TestFlight. Without Firebase connected it runs in preview mode: any number, code 123456."

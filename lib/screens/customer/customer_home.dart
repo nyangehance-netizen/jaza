@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
+import '../../services/app_mode.dart';
 import '../../services/auth_service.dart';
 import '../../services/db.dart';
 import '../../services/location_service.dart';
@@ -29,6 +30,18 @@ class CustomerHome extends StatefulWidget {
 
 class _CustomerHomeState extends State<CustomerHome> {
   int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final open = AppMode.openOrderOnStart;
+    if (open != null) {
+      AppMode.openOrderOnStart = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => TrackScreen(orderId: open)));
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
