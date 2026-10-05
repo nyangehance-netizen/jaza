@@ -18,6 +18,12 @@ name: iOS build
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Which GitHub Mac to use (try another if a build waits too long for a machine)"
+        type: choice
+        default: macos-15-intel
+        options: [macos-15-intel, macos-15, macos-14]
   push:
     branches: [main]
     paths:
@@ -33,7 +39,8 @@ concurrency:
 jobs:
   ios:
     name: Build iPhone app
-    runs-on: macos-15
+    # Intel Macs by default: GitHub's Apple-chip Macs often have long queues.
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 75
     permissions:
       contents: write
