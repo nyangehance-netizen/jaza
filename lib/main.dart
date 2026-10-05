@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +25,7 @@ Future<void> main() async {
     DemoStore.seed();
     // The build machine's screenshot check starts the app with LETEA_DEMO=track
     // to show a delivery in progress. Normal launches never set this.
-    if (Platform.environment['LETEA_DEMO'] == 'track') await _startTrackingDemo();
+    if (_demoRequested()) await _startTrackingDemo();
   }
   runApp(
     ChangeNotifierProvider(
@@ -33,6 +33,21 @@ Future<void> main() async {
       child: const LeteaApp(),
     ),
   );
+}
+
+/// True when the build machine asked for the delivery demo, either with the
+/// LETEA_DEMO=track setting or a `letea_demo` file in the app's tmp folder.
+bool _demoRequested() {
+  try {
+    final env = Platform.environment;
+    final home = env['HOME'];
+    final asked = env['LETEA_DEMO'] == 'track' || (home != null && File('$home/tmp/letea_demo').existsSync());
+    debugPrint('LETEA_DEMO check: env=${env['LETEA_DEMO']} home=$home asked=$asked');
+    return asked;
+  } catch (e) {
+    debugPrint('LETEA_DEMO check failed: $e');
+    return false;
+  }
 }
 
 Future<void> _startTrackingDemo() async {
