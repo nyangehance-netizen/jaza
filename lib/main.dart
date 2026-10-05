@@ -1,5 +1,3 @@
-import 'dart:io' show File, Platform;
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -23,9 +21,8 @@ Future<void> main() async {
     // No Firebase project connected yet: run with sample data on this phone.
     AppMode.preview = true;
     DemoStore.seed();
-    // The build machine's screenshot check starts the app with LETEA_DEMO=track
-    // to show a delivery in progress. Normal launches never set this.
-    if (_demoRequested()) await _startTrackingDemo();
+    // The build machine's test copy opens straight onto a delivery in progress.
+    if (_demo == 'track') await _startTrackingDemo();
   }
   runApp(
     ChangeNotifierProvider(
@@ -35,20 +32,9 @@ Future<void> main() async {
   );
 }
 
-/// True when the build machine asked for the delivery demo, either with the
-/// LETEA_DEMO=track setting or a `letea_demo` file in the app's tmp folder.
-bool _demoRequested() {
-  try {
-    final env = Platform.environment;
-    final home = env['HOME'];
-    final asked = env['LETEA_DEMO'] == 'track' || (home != null && File('$home/tmp/letea_demo').existsSync());
-    debugPrint('LETEA_DEMO check: env=${env['LETEA_DEMO']} home=$home asked=$asked');
-    return asked;
-  } catch (e) {
-    debugPrint('LETEA_DEMO check failed: $e');
-    return false;
-  }
-}
+/// Only the build machine's test copy is built with LETEA_DEMO=track
+/// (flutter build --dart-define). The app people install never has it.
+const _demo = String.fromEnvironment('LETEA_DEMO');
 
 Future<void> _startTrackingDemo() async {
   const phone = '+255712000000';

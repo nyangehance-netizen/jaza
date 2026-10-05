@@ -132,7 +132,7 @@ jobs:
       - name: Open the app on a virtual iPhone and take screenshots
         run: |
           set +e
-          flutter build ios --simulator --debug || { echo "::error title=Virtual iPhone build failed::See the log of this step."; exit 1; }
+          flutter build ios --simulator --debug --dart-define=LETEA_DEMO=track || { echo "::error title=Virtual iPhone build failed::See the log of this step."; exit 1; }
           UDID=$(xcrun simctl list devices available -j | python3 -c "
           import json,sys
           d=json.load(sys.stdin)['devices']
@@ -152,23 +152,16 @@ jobs:
             exit 1
           }
 
-          # 1) Normal start: the sign-in screen.
-          xcrun simctl launch --stdout="$RUNNER_TEMP/app1.log" --stderr="$RUNNER_TEMP/app1.log" "$UDID" "$BUNDLE_ID"
-          sleep 25; snap 1-sign-in
+          # The test copy signs in a sample customer and places an order by itself:
+          # the shop accepts, the rider rides to the shop, then to the customer.
+          xcrun simctl launch --stdout="$RUNNER_TEMP/app.log" --stderr="$RUNNER_TEMP/app.log" "$UDID" "$BUNDLE_ID" \
+            || fail "The app could not be opened."
+          sleep 25; snap 1-order-placed
           alive || fail "The app closed right after opening."
-          xcrun simctl terminate "$UDID" "$BUNDLE_ID"
-
-          # 2) A delivery in progress: shop accepts, rider rides to the shop, then to the customer.
-          sleep 3
-          DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
-          mkdir -p "$DATA/tmp" && echo track > "$DATA/tmp/letea_demo"
-          SIMCTL_CHILD_LETEA_DEMO=track xcrun simctl launch --terminate-running-process \
-            --stdout="$RUNNER_TEMP/app2.log" --stderr="$RUNNER_TEMP/app2.log" "$UDID" "$BUNDLE_ID"
-          sleep 20; snap 2-order-placed
-          sleep 25; snap 3-rider-to-shop
-          sleep 30; snap 4-rider-to-customer
+          sleep 30; snap 2-rider-to-shop
+          sleep 30; snap 3-rider-to-customer
+          sleep 20; snap 4-arriving
           alive || fail "The app closed while tracking a delivery."
-          echo "::notice title=Demo start check::$(grep -h 'LETEA_DEMO' "$RUNNER_TEMP"/app2.log 2>/dev/null | head -2 | tr '\n' ' ')"
           echo "::notice title=iPhone check::The app opened and tracked a delivery on a virtual iPhone without closing."
 
       - name: Save screenshots to the ios-screenshots branch
